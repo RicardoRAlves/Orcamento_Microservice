@@ -1,0 +1,17 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27018/orcamento
+
+aws:
+  region: us-east-1
+  endpoint: http://localhost:4566
+  access-key: test
+  secret-key: test
+  sqs:
+    consumer:
+      enabled: false
+    budget-requests-queue: budget-requests
+    budget-requests-dlq: budget-requests-dlq
+    budget-calculation-requests-queue: budget-calculation-requests
+    budget-calculation-requests-dlq: budget-calculation-requests-dlq

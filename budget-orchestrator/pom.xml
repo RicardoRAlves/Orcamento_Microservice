@@ -10,9 +10,9 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>budget-processor</artifactId>
-    <name>budget-processor</name>
-    <description>Processador assincrono de orcamentos via SQS</description>
+    <artifactId>budget-orchestrator</artifactId>
+    <name>budget-orchestrator</name>
+    <description>Orquestrador assincrono do fluxo de orcamentos via SQS</description>
 
     <dependencies>
         <dependency>
@@ -22,6 +22,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
@@ -43,4 +51,3 @@
         </plugins>
     </build>
 </project>
-

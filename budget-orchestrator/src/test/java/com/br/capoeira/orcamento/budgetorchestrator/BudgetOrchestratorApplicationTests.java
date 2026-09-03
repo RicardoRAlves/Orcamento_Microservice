@@ -1,13 +1,12 @@
-package com.br.capoeira.orcamento.budgetprocessor;
+package com.br.capoeira.orcamento.budgetorchestrator;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class BudgetProcessorApplicationTests {
+class BudgetOrchestratorApplicationTests {
 
     @Test
     void contextLoads() {
     }
 }
-

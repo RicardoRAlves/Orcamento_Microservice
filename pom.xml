@@ -20,7 +20,7 @@
 
     <modules>
         <module>budget-api</module>
-        <module>budget-processor</module>
+        <module>budget-orchestrator</module>
         <module>budget-calculator</module>
         <module>notification-service</module>
         <module>budget-lambda</module>

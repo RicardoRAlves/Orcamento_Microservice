@@ -1,0 +1,92 @@
+package com.br.capoeira.orcamento.budgetorchestrator.service;
+
+import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetCalculationRequestMessage;
+import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetRequestMessage;
+import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetStatus;
+import com.br.capoeira.orcamento.budgetorchestrator.exception.BudgetProcessingException;
+import com.br.capoeira.orcamento.budgetorchestrator.model.BudgetDocument;
+import com.br.capoeira.orcamento.budgetorchestrator.producer.BudgetCalculationRequestPublisher;
+import com.br.capoeira.orcamento.budgetorchestrator.repository.BudgetRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+
+@Service
+public class BudgetOrchestrationService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BudgetOrchestrationService.class);
+
+    private final BudgetRepository budgetRepository;
+    private final BudgetCalculationRequestPublisher budgetCalculationRequestPublisher;
+
+    public BudgetOrchestrationService(
+            BudgetRepository budgetRepository,
+            BudgetCalculationRequestPublisher budgetCalculationRequestPublisher) {
+        this.budgetRepository = budgetRepository;
+        this.budgetCalculationRequestPublisher = budgetCalculationRequestPublisher;
+    }
+
+    public void process(BudgetRequestMessage message) {
+        validate(message);
+
+        var budget = budgetRepository.findById(message.budgetId())
+                .orElseThrow(() -> new BudgetProcessingException(
+                        "Budget not found for processing. budgetId=%s".formatted(message.budgetId())
+                ));
+
+        if (budget.getStatus() == BudgetStatus.CALCULATED) {
+            LOGGER.info("Skipping already calculated budget. budgetId={}", message.budgetId());
+            return;
+        }
+
+        if (budget.getStatus() == BudgetStatus.FAILED) {
+            LOGGER.info("Skipping budget already marked as failed. budgetId={}", message.budgetId());
+            return;
+        }
+
+        if (budget.getStatus() == BudgetStatus.CALCULATION_REQUESTED) {
+            LOGGER.info("Skipping budget already sent to calculator. budgetId={}", message.budgetId());
+            return;
+        }
+
+        markAsProcessing(budget);
+
+        budgetCalculationRequestPublisher.publish(new BudgetCalculationRequestMessage(
+                budget.getId(),
+                budget.getCustomerName(),
+                budget.getDescription(),
+                budget.getAmount(),
+                Instant.now()
+        ));
+
+        markAsCalculationRequested(budget);
+
+        LOGGER.info(
+                "Budget request orchestrated. budgetId={}, customerName={}, amount={}, status={}",
+                message.budgetId(),
+                message.customerName(),
+                message.amount(),
+                BudgetStatus.CALCULATION_REQUESTED
+        );
+    }
+
+    private void validate(BudgetRequestMessage message) {
+        if (message == null || message.budgetId() == null) {
+            throw new BudgetProcessingException("Budget request message must contain budgetId");
+        }
+    }
+
+    private void markAsProcessing(BudgetDocument budget) {
+        budget.setStatus(BudgetStatus.PROCESSING);
+        budget.setUpdatedAt(Instant.now());
+        budgetRepository.save(budget);
+    }
+
+    private void markAsCalculationRequested(BudgetDocument budget) {
+        budget.setStatus(BudgetStatus.CALCULATION_REQUESTED);
+        budget.setUpdatedAt(Instant.now());
+        budgetRepository.save(budget);
+    }
+}

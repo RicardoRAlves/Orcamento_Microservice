@@ -1,4 +1,4 @@
-package com.br.capoeira.orcamento.budgetapi.model;
+package com.br.capoeira.orcamento.budgetorchestrator.dto;
 
 public enum BudgetStatus {
     RECEIVED,
