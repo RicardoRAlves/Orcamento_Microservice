@@ -1,0 +1,14 @@
+services:
+  localstack:
+    image: localstack/localstack:3
+    container_name: orcamento-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,lambda,iam,logs
+      - AWS_DEFAULT_REGION=us-east-1
+      - DEBUG=0
+    volumes:
+      - "./localstack/init:/etc/localstack/init/ready.d"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+

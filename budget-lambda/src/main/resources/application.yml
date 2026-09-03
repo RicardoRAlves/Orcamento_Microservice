@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: budget-lambda
+  cloud:
+    function:
+      definition: processBudgetRequest
+
