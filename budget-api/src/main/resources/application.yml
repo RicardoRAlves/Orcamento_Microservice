@@ -1,6 +1,9 @@
 spring:
   application:
     name: budget-api
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27018/orcamento}
 
 server:
   port: 8081
@@ -11,3 +14,10 @@ management:
       exposure:
         include: health,info
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha

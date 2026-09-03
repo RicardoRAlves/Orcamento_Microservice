@@ -1,4 +1,14 @@
 services:
+  mongodb:
+    image: mongo:7
+    container_name: orcamento-mongodb
+    ports:
+      - "27018:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=orcamento
+    volumes:
+      - mongodb-data:/data/db
+
   localstack:
     image: localstack/localstack:3
     container_name: orcamento-localstack
@@ -12,3 +22,5 @@ services:
       - "./localstack/init:/etc/localstack/init/ready.d"
       - "/var/run/docker.sock:/var/run/docker.sock"
 
+volumes:
+  mongodb-data:
