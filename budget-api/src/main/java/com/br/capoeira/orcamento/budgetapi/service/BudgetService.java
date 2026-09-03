@@ -2,7 +2,11 @@ package com.br.capoeira.orcamento.budgetapi.service;
 
 import com.br.capoeira.orcamento.budgetapi.dto.BudgetResponse;
 import com.br.capoeira.orcamento.budgetapi.dto.CreateBudgetRequest;
+import com.br.capoeira.orcamento.budgetapi.exception.BudgetMessagePublishException;
+import com.br.capoeira.orcamento.budgetapi.message.BudgetRequestMessage;
 import com.br.capoeira.orcamento.budgetapi.model.BudgetDocument;
+import com.br.capoeira.orcamento.budgetapi.model.BudgetStatus;
+import com.br.capoeira.orcamento.budgetapi.producer.BudgetRequestPublisher;
 import com.br.capoeira.orcamento.budgetapi.repository.BudgetRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,12 +19,14 @@ import java.util.UUID;
 @Service
 public class BudgetService {
 
-    private static final String INITIAL_STATUS = "RECEIVED";
-
     private final BudgetRepository budgetRepository;
+    private final BudgetRequestPublisher budgetRequestPublisher;
 
-    public BudgetService(BudgetRepository budgetRepository) {
+    public BudgetService(
+            BudgetRepository budgetRepository,
+            BudgetRequestPublisher budgetRequestPublisher) {
         this.budgetRepository = budgetRepository;
+        this.budgetRequestPublisher = budgetRequestPublisher;
     }
 
     public BudgetResponse create(CreateBudgetRequest request) {
@@ -33,11 +39,26 @@ public class BudgetService {
         budget.setCustomerName(request.customerName());
         budget.setDescription(request.description());
         budget.setAmount(request.amount());
-        budget.setStatus(INITIAL_STATUS);
+        budget.setStatus(BudgetStatus.RECEIVED);
         budget.setCreatedAt(now);
         budget.setUpdatedAt(now);
 
-        return toResponse(budgetRepository.save(budget));
+        var savedBudget = budgetRepository.save(budget);
+
+        try {
+            budgetRequestPublisher.publish(toMessage(savedBudget));
+        } catch (BudgetMessagePublishException exception) {
+            savedBudget.setStatus(BudgetStatus.PUBLISH_FAILED);
+            savedBudget.setUpdatedAt(Instant.now());
+            try {
+                budgetRepository.save(savedBudget);
+            } catch (RuntimeException statusUpdateException) {
+                exception.addSuppressed(statusUpdateException);
+            }
+            throw exception;
+        }
+
+        return toResponse(savedBudget);
     }
 
     public BudgetResponse findById(UUID id) {
@@ -58,6 +79,17 @@ public class BudgetService {
         if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Budget amount must be greater than zero");
         }
+    }
+
+    private BudgetRequestMessage toMessage(BudgetDocument budget) {
+        return new BudgetRequestMessage(
+                budget.getId(),
+                budget.getCustomerName(),
+                budget.getDescription(),
+                budget.getAmount(),
+                budget.getStatus(),
+                budget.getCreatedAt()
+        );
     }
 
     private BudgetResponse toResponse(BudgetDocument budget) {

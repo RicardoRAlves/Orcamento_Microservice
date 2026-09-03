@@ -1,6 +1,7 @@
 package com.br.capoeira.orcamento.budgetapi.handler;
 
 import com.br.capoeira.orcamento.budgetapi.dto.ErrorResponse;
+import com.br.capoeira.orcamento.budgetapi.exception.BudgetMessagePublishException;
 import com.mongodb.MongoException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.sqs.model.SqsException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -69,6 +72,28 @@ public class GlobalExceptionHandler {
                 : "MongoDB operation failed";
 
         return build(HttpStatus.SERVICE_UNAVAILABLE, message, request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(BudgetMessagePublishException.class)
+    public ResponseEntity<ErrorResponse> handleBudgetMessagePublish(
+            BudgetMessagePublishException exception,
+            HttpServletRequest request) {
+
+        var fields = Map.of("budgetId", exception.getBudgetId().toString());
+        return build(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Budget was saved, but could not be queued for processing",
+                request.getRequestURI(),
+                fields
+        );
+    }
+
+    @ExceptionHandler({SqsException.class, SdkClientException.class})
+    public ResponseEntity<ErrorResponse> handleSqs(
+            RuntimeException exception,
+            HttpServletRequest request) {
+
+        return build(HttpStatus.SERVICE_UNAVAILABLE, "SQS operation failed", request.getRequestURI(), null);
     }
 
     @ExceptionHandler(Exception.class)

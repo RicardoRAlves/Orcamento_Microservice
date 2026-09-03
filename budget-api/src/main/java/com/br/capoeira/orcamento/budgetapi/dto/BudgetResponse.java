@@ -1,5 +1,6 @@
 package com.br.capoeira.orcamento.budgetapi.dto;
 
+import com.br.capoeira.orcamento.budgetapi.model.BudgetStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -21,7 +22,7 @@ public record BudgetResponse(
         BigDecimal amount,
 
         @Schema(description = "Status atual da solicitacao", example = "RECEIVED")
-        String status,
+        BudgetStatus status,
 
         @Schema(description = "Data de criacao da solicitacao", example = "2026-09-03T17:40:00Z")
         Instant createdAt,

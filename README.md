@@ -192,10 +192,10 @@ O `docker-compose.yml` sobe LocalStack com SQS, Lambda, IAM e Logs habilitados p
 docker compose up -d
 ```
 
-Para conferir as filas criadas:
+Para conferir as filas criadas usando o LocalStack:
 
 ```bash
-aws --endpoint-url=http://localhost:4566 sqs list-queues --region us-east-1
+docker exec orcamento-localstack awslocal sqs list-queues
 ```
 
 ## Comandos
@@ -224,12 +224,63 @@ Empacotar a Lambda:
 mvn -pl budget-lambda package
 ```
 
+## Testando a API com SQS local
+
+Suba a infraestrutura local:
+
+```bash
+docker compose up -d
+```
+
+Suba a API:
+
+```bash
+mvn -pl budget-api spring-boot:run
+```
+
+Acesse o Swagger:
+
+```text
+http://localhost:8081/swagger-ui.html
+```
+
+Execute `POST /budgets` com um payload valido:
+
+```json
+{
+  "customerName": "Ricardo Alves",
+  "description": "Orcamento para teste no Swagger",
+  "amount": 1500.00
+}
+```
+
+Se a criacao funcionar, a API retorna `202 Accepted` com status `RECEIVED` e publica uma mensagem na fila `budget-requests`.
+
+Para ver a mensagem na fila sem instalar o AWS CLI localmente:
+
+```bash
+docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-requests
+```
+
+Se quiser ver a mesma mensagem mais de uma vez durante testes, use um visibility timeout curto:
+
+```bash
+docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-requests --visibility-timeout 5
+```
+
+Para listar as filas criadas no LocalStack:
+
+```bash
+docker exec orcamento-localstack awslocal sqs list-queues
+```
+
 ## Portas e endpoints
 
 - `budget-api`: `http://localhost:8081`
 - Actuator da API: `http://localhost:8081/actuator/health`
 - Swagger UI da API, quando houver controllers mapeados: `http://localhost:8081/swagger-ui.html`
 - LocalStack: `http://localhost:4566`
+- MongoDB local do projeto: `localhost:27018`
 
 ## Direcionamento de arquitetura
 

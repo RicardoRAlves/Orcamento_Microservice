@@ -9,16 +9,16 @@ import java.math.BigDecimal;
 
 @Schema(description = "Dados para criacao de uma solicitacao de orcamento")
 public record CreateBudgetRequest(
-        @NotBlank
+        @NotBlank(message = "Customer name is required")
         @Schema(description = "Nome do cliente solicitante", example = "Ricardo Alves")
         String customerName,
 
-        @NotBlank
+        @NotBlank(message = "Description is required")
         @Schema(description = "Descricao resumida do servico ou produto do orcamento", example = "Orcamento para evento de capoeira")
         String description,
 
-        @NotNull
-        @DecimalMin(value = "0.01")
+        @NotNull(message = "Budget amount is required")
+        @DecimalMin(value = "0.01", message = "Budget amount must be greater than zero")
         @Schema(description = "Valor inicial informado para o orcamento", example = "1500.00")
         BigDecimal amount
 ) {

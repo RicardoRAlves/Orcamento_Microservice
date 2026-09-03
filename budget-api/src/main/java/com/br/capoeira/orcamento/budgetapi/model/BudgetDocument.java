@@ -15,7 +15,7 @@ public class BudgetDocument {
     private String customerName;
     private String description;
     private BigDecimal amount;
-    private String status;
+    private BudgetStatus status;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -51,11 +51,11 @@ public class BudgetDocument {
         this.amount = amount;
     }
 
-    public String getStatus() {
+    public BudgetStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(BudgetStatus status) {
         this.status = status;
     }
 
