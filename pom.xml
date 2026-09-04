@@ -13,7 +13,7 @@
 
     <groupId>com.br.capoeira.orcamento</groupId>
     <artifactId>orcamento-microservice</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
     <name>orcamento-microservice</name>
     <description>Microservicos para fluxo de orcamentos</description>
@@ -27,13 +27,17 @@
     </modules>
 
     <properties>
+        <revision>0.0.1-SNAPSHOT</revision>
         <java.version>17</java.version>
         <maven.compiler.release>17</maven.compiler.release>
         <maven.compiler.useModulePath>false</maven.compiler.useModulePath>
-        <amazon.version>2.25.70</amazon.version>
+        <aws.sdk.version>2.25.70</aws.sdk.version>
+        <aws.lambda.java.core.version>1.2.3</aws.lambda.java.core.version>
+        <aws.lambda.java.events.version>3.11.5</aws.lambda.java.events.version>
         <spring-cloud-function.version>4.1.3</spring-cloud-function.version>
         <spring-openapi.version>2.8.0</spring-openapi.version>
         <jacoco.version>0.8.14</jacoco.version>
+        <maven-shade-plugin.version>3.5.3</maven-shade-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -41,9 +45,19 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>${amazon.version}</version>
+                <version>${aws.sdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.amazonaws</groupId>
+                <artifactId>aws-lambda-java-events</artifactId>
+                <version>${aws.lambda.java.events.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.amazonaws</groupId>
+                <artifactId>aws-lambda-java-core</artifactId>
+                <version>${aws.lambda.java.core.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
@@ -62,6 +76,11 @@
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
                     <version>${jacoco.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>${maven-shade-plugin.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>

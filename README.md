@@ -13,9 +13,9 @@ Estado atual do projeto:
 - `budget-orchestrator` consome `budget-calculation-results` e atualiza o MongoDB com `CALCULATED` ou `FAILED`.
 - `budget-orchestrator` publica o evento final no topico SNS `budget-events`.
 - SNS entrega o evento na fila `notification-requests`.
+- SNS aciona a Lambda `budget-audit-lambda` para auditoria serverless do evento final.
 - `notification-service` consome `notification-requests` e simula o envio da notificacao via log estruturado.
 - As filas principais possuem DLQ configurada no LocalStack.
-- `notification-service` e `budget-lambda` estao preparados como proximas etapas de evolucao.
 
 ## Visao geral
 
@@ -31,7 +31,7 @@ flowchart LR
     Orchestrator --> TopicEvents[(SNS: budget-events)]
     TopicEvents --> QueueNotifications[(SQS: notification-requests)]
     QueueNotifications --> Notification[notification-service]
-    TopicEvents -. auditoria .-> Lambda[budget-lambda]
+    TopicEvents --> Lambda[budget-audit-lambda]
 ```
 
 ## Modulos
@@ -130,7 +130,7 @@ Modulo serverless para auditoria e integracoes do fluxo de orcamento via AWS Lam
 
 Responsabilidades previstas:
 
-- Expor uma funcao Spring Cloud Function chamada `processBudgetRequest`.
+- Expor uma funcao Spring Cloud Function chamada `processBudgetEvent`.
 - Ser acionado por eventos publicados no SNS.
 - Registrar auditoria tecnica do fluxo, como status final, falhas, tempo de processamento ou integracoes futuras.
 - Gerar um artefato empacotado com `maven-shade-plugin`, adequado para deploy em Lambda.
@@ -198,6 +198,7 @@ O ambiente local usa LocalStack para simular servicos AWS. O script `localstack/
 Assinaturas SNS configuradas localmente:
 
 - `budget-events` -> SQS `notification-requests`, com `RawMessageDelivery=true`.
+- `budget-events` -> Lambda `budget-audit-lambda`.
 
 As filas `budget-requests`, `budget-calculation-requests`, `budget-calculation-results` e `notification-requests` sao criadas com:
 
@@ -275,6 +276,7 @@ Servicos locais:
 - LocalStack: `localhost:4566`
 - SQS no LocalStack: filas criadas por `localstack/init/01-sqs.sh`
 - SNS no LocalStack: topico `budget-events` criado por `localstack/init/01-sqs.sh`
+- Lambda no LocalStack: funcao `budget-audit-lambda` criada por `localstack/init/02-lambda.sh` quando o jar existir.
 
 ```bash
 docker compose up -d
@@ -333,6 +335,11 @@ Variaveis do `docker-compose.yml`:
 - `LOCALSTACK_DEBUG`
 - `LOCALSTACK_INIT_PATH`
 - `DOCKER_SOCKET_PATH`
+- `BUDGET_LAMBDA_TARGET_PATH`
+- `BUDGET_AUDIT_LAMBDA_NAME`
+- `BUDGET_AUDIT_LAMBDA_JAR`
+- `BUDGET_AUDIT_LAMBDA_ROLE_NAME`
+- `BUDGET_AUDIT_LAMBDA_MAIN_CLASS`
 
 ## Comandos
 
@@ -365,6 +372,20 @@ Empacotar a Lambda:
 ```bash
 mvn -pl budget-lambda package
 ```
+
+Depois de empacotar a Lambda, recrie o LocalStack para executar o script de deploy local:
+
+```bash
+docker compose up -d --force-recreate localstack
+```
+
+O script `localstack/init/02-lambda.sh` procura o jar em:
+
+```text
+budget-lambda/target/budget-lambda-0.0.1-SNAPSHOT.jar
+```
+
+Se o jar nao existir, o script apenas registra uma mensagem e nao quebra a subida da infraestrutura.
 
 ## Testando o fluxo atual
 
@@ -410,6 +431,8 @@ Com o `budget-calculator` rodando, ele consome `budget-calculation-requests`, ap
 
 Quando o `budget-orchestrator` consome `budget-calculation-results`, ele atualiza o MongoDB e publica o evento final no topico SNS `budget-events`. O SNS entrega esse evento para a fila `notification-requests`.
 
+O mesmo evento final tambem aciona a Lambda `budget-audit-lambda`, que parseia o evento SNS e registra auditoria em log.
+
 Com o `notification-service` rodando, ele consome `notification-requests`, valida o evento recebido e registra a notificacao em log. Neste momento o envio real por e-mail, SMS, WhatsApp ou webhook ainda e uma evolucao futura.
 
 Para ver a mensagem na fila sem instalar o AWS CLI localmente:
@@ -454,6 +477,18 @@ Para listar as assinaturas SNS:
 
 ```bash
 docker exec orcamento-localstack awslocal sns list-subscriptions
+```
+
+Para listar as Lambdas locais:
+
+```bash
+docker exec orcamento-localstack awslocal lambda list-functions
+```
+
+Para ver logs da Lambda de auditoria:
+
+```bash
+docker exec orcamento-localstack awslocal logs filter-log-events --log-group-name /aws/lambda/budget-audit-lambda
 ```
 
 Para inspecionar mensagens que chegaram na DLQ:
@@ -505,6 +540,7 @@ Regras aplicadas ate agora:
 - O orquestrador so deleta a mensagem de `budget-calculation-results` depois que o MongoDB e atualizado com o resultado final.
 - O orquestrador publica o evento final no SNS antes de marcar `completedEventPublishedAt`.
 - Se a publicacao no SNS falhar depois do MongoDB ser atualizado, a mensagem de resultado nao e deletada; no retry, o orquestrador tenta publicar o evento novamente.
+- A Lambda de auditoria nao atualiza o fluxo principal; ela registra auditoria em log e fica fora do caminho critico de calculo/notificacao.
 - O notification-service so deleta a mensagem de `notification-requests` depois de processar a notificacao com sucesso.
 - Se a mensagem de entrada estiver invalida, se o MongoDB falhar ou se alguma publicacao falhar, a mensagem nao e deletada; o SQS faz retry e depois move para DLQ.
 - O status `CALCULATION_REQUESTED` evita publicacao duplicada para o calculator quando uma mensagem ja processada for entregue novamente.
@@ -534,6 +570,6 @@ Principios para evolucao dos modulos:
 
 ## Proximas etapas planejadas
 
-- Conectar SNS a `budget-lambda` para auditoria obrigatoria do fluxo local e preparar deploy serverless.
 - Implementar envio real de notificacao por e-mail, SMS, WhatsApp ou webhook.
+- Persistir auditorias da Lambda em um destino dedicado, como DynamoDB, S3 ou CloudWatch estruturado.
 - Evoluir contratos compartilhados entre modulos para evitar duplicacao de DTOs e enums.

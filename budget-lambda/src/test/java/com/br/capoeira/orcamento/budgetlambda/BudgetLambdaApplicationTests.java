@@ -2,7 +2,7 @@ package com.br.capoeira.orcamento.budgetlambda;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.amazonaws.services.lambda.runtime.events.SQSEvent;
+import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 import java.util.List;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
@@ -13,14 +13,30 @@ import org.springframework.boot.test.context.SpringBootTest;
 class BudgetLambdaApplicationTests {
 
     @Autowired
-    private Function<SQSEvent, String> processBudgetRequest;
+    private Function<SNSEvent, String> processBudgetEvent;
 
     @Test
     void contextLoads() {
-        SQSEvent event = new SQSEvent();
-        event.setRecords(List.of(new SQSEvent.SQSMessage()));
+        SNSEvent.SNS sns = new SNSEvent.SNS();
+        sns.setMessage("""
+                {
+                  "budgetId": "11111111-1111-1111-1111-111111111111",
+                  "customerName": "Ricardo Alves",
+                  "description": "Teste auditoria",
+                  "originalAmount": 1500,
+                  "calculatedAmount": 1350.00,
+                  "status": "CALCULATED",
+                  "errorMessage": null,
+                  "occurredAt": "2026-09-04T12:00:00Z"
+                }
+                """);
 
-        assertThat(processBudgetRequest.apply(event)).isEqualTo("processed 1 message(s)");
+        SNSEvent.SNSRecord record = new SNSEvent.SNSRecord();
+        record.setSns(sns);
+
+        SNSEvent event = new SNSEvent();
+        event.setRecords(List.of(record));
+
+        assertThat(processBudgetEvent.apply(event)).isEqualTo("audited 1 budget event(s)");
     }
 }
-

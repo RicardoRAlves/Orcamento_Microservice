@@ -20,6 +20,7 @@ services:
       - DEBUG=${LOCALSTACK_DEBUG:-0}
     volumes:
       - "${LOCALSTACK_INIT_PATH:-./localstack/init}:/etc/localstack/init/ready.d"
+      - "${BUDGET_LAMBDA_TARGET_PATH:-./budget-lambda/target}:/opt/lambda-artifacts"
       - "${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock"
 
 volumes:

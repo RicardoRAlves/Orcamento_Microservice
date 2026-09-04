@@ -3,4 +3,4 @@ spring:
     name: ${SPRING_APPLICATION_NAME:budget-lambda}
   cloud:
     function:
-      definition: ${SPRING_CLOUD_FUNCTION_DEFINITION:processBudgetRequest}
+      definition: ${SPRING_CLOUD_FUNCTION_DEFINITION:processBudgetEvent}
