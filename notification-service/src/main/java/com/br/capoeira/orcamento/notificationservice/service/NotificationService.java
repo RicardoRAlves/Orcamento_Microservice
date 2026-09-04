@@ -15,8 +15,11 @@ public class NotificationService {
         validate(message);
 
         LOGGER.info(
-                "Budget notification processed. budgetId={}, customerName={}, status={}, originalAmount={}, calculatedAmount={}, errorMessage={}",
+                "Budget notification processed. eventType={}, eventVersion={}, budgetId={}, correlationId={}, customerName={}, status={}, originalAmount={}, calculatedAmount={}, errorMessage={}",
+                message.eventType(),
+                message.eventVersion(),
                 message.budgetId(),
+                message.correlationId(),
                 message.customerName(),
                 message.status(),
                 message.originalAmount(),

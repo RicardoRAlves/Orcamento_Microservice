@@ -11,8 +11,11 @@ import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SqsException;
+
+import java.util.Map;
 
 @Component
 public class BudgetRequestPublisher {
@@ -43,11 +46,13 @@ public class BudgetRequestPublisher {
             sqsClient.sendMessage(SendMessageRequest.builder()
                     .queueUrl(queueUrl.queueUrl())
                     .messageBody(messageBody)
+                    .messageAttributes(messageAttributes(message))
                     .build());
         } catch (JsonProcessingException exception) {
             LOGGER.error(
-                    "Could not serialize budget request message. budgetId={}, queueName={}",
+                    "Could not serialize budget request message. budgetId={}, correlationId={}, queueName={}",
                     message.budgetId(),
+                    message.correlationId(),
                     queueName,
                     exception
             );
@@ -59,8 +64,9 @@ public class BudgetRequestPublisher {
             );
         } catch (SqsException | SdkClientException exception) {
             LOGGER.error(
-                    "Could not publish budget request message. budgetId={}, queueName={}, error={}",
+                    "Could not publish budget request message. budgetId={}, correlationId={}, queueName={}, error={}",
                     message.budgetId(),
+                    message.correlationId(),
                     queueName,
                     exception.getMessage(),
                     exception
@@ -76,5 +82,20 @@ public class BudgetRequestPublisher {
 
     private String toJson(BudgetRequestMessage message) throws JsonProcessingException {
         return objectMapper.writeValueAsString(message);
+    }
+
+    private Map<String, MessageAttributeValue> messageAttributes(BudgetRequestMessage message) {
+        return Map.of(
+                "eventType", stringAttribute(message.eventType()),
+                "eventVersion", stringAttribute(message.eventVersion()),
+                "correlationId", stringAttribute(message.correlationId().toString())
+        );
+    }
+
+    private MessageAttributeValue stringAttribute(String value) {
+        return MessageAttributeValue.builder()
+                .dataType("String")
+                .stringValue(value)
+                .build();
     }
 }

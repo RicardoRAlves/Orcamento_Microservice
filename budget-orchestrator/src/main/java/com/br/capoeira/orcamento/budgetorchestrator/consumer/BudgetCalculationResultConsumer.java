@@ -66,6 +66,7 @@ public class BudgetCalculationResultConsumer {
                     .queueUrl(queueUrl)
                     .maxNumberOfMessages(maxMessages)
                     .waitTimeSeconds(waitTimeSeconds)
+                    .messageAttributeNames("All")
                     .build());
 
             response.messages().forEach(this::handleMessage);

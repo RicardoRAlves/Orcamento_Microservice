@@ -33,8 +33,11 @@ public class BudgetAuditService {
         try {
             var message = objectMapper.readValue(record.getSNS().getMessage(), BudgetEventMessage.class);
             LOGGER.info(
-                    "Budget audit event received. budgetId={}, status={}, originalAmount={}, calculatedAmount={}, occurredAt={}",
+                    "Budget audit event received. eventType={}, eventVersion={}, budgetId={}, correlationId={}, status={}, originalAmount={}, calculatedAmount={}, occurredAt={}",
+                    message.eventType(),
+                    message.eventVersion(),
                     message.budgetId(),
+                    message.correlationId(),
                     message.status(),
                     message.originalAmount(),
                     message.calculatedAmount(),

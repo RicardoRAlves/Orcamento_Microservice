@@ -12,6 +12,7 @@ public class BudgetDocument {
 
     @Id
     private UUID id;
+    private UUID correlationId;
     private String customerName;
     private String description;
     private BigDecimal amount;
@@ -25,6 +26,14 @@ public class BudgetDocument {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public UUID getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(UUID correlationId) {
+        this.correlationId = correlationId;
     }
 
     public String getCustomerName() {

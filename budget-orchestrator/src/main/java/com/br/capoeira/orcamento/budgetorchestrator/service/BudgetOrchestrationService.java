@@ -15,11 +15,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 public class BudgetOrchestrationService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BudgetOrchestrationService.class);
+    private static final String CALCULATION_REQUESTED_EVENT = "BUDGET_CALCULATION_REQUESTED";
+    private static final String BUDGET_COMPLETED_EVENT = "BUDGET_COMPLETED";
+    private static final String EVENT_VERSION = "1.0";
 
     private final BudgetRepository budgetRepository;
     private final BudgetCalculationRequestPublisher budgetCalculationRequestPublisher;
@@ -42,24 +46,29 @@ public class BudgetOrchestrationService {
                         "Budget not found for processing. budgetId=%s".formatted(message.budgetId())
                 ));
 
+        ensureCorrelationId(budget, message.correlationId());
+
         if (budget.getStatus() == BudgetStatus.CALCULATED) {
-            LOGGER.info("Skipping already calculated budget. budgetId={}", message.budgetId());
+            LOGGER.info("Skipping already calculated budget. budgetId={}, correlationId={}", message.budgetId(), message.correlationId());
             return;
         }
 
         if (budget.getStatus() == BudgetStatus.FAILED) {
-            LOGGER.info("Skipping budget already marked as failed. budgetId={}", message.budgetId());
+            LOGGER.info("Skipping budget already marked as failed. budgetId={}, correlationId={}", message.budgetId(), message.correlationId());
             return;
         }
 
         if (budget.getStatus() == BudgetStatus.CALCULATION_REQUESTED) {
-            LOGGER.info("Skipping budget already sent to calculator. budgetId={}", message.budgetId());
+            LOGGER.info("Skipping budget already sent to calculator. budgetId={}, correlationId={}", message.budgetId(), message.correlationId());
             return;
         }
 
         markAsProcessing(budget);
 
         budgetCalculationRequestPublisher.publish(new BudgetCalculationRequestMessage(
+                CALCULATION_REQUESTED_EVENT,
+                EVENT_VERSION,
+                budget.getCorrelationId(),
                 budget.getId(),
                 budget.getCustomerName(),
                 budget.getDescription(),
@@ -70,8 +79,9 @@ public class BudgetOrchestrationService {
         markAsCalculationRequested(budget);
 
         LOGGER.info(
-                "Budget request orchestrated. budgetId={}, customerName={}, amount={}, status={}",
+                "Budget request orchestrated. budgetId={}, correlationId={}, customerName={}, amount={}, status={}",
                 message.budgetId(),
+                budget.getCorrelationId(),
                 message.customerName(),
                 message.amount(),
                 BudgetStatus.CALCULATION_REQUESTED
@@ -85,6 +95,8 @@ public class BudgetOrchestrationService {
                 .orElseThrow(() -> new BudgetProcessingException(
                         "Budget not found for calculation result. budgetId=%s".formatted(message.budgetId())
                 ));
+
+        ensureCorrelationId(budget, message.correlationId());
 
         if (budget.getStatus() == BudgetStatus.CALCULATED || budget.getStatus() == BudgetStatus.FAILED) {
             publishCompletedEventIfNeeded(budget, message.errorMessage());
@@ -105,8 +117,9 @@ public class BudgetOrchestrationService {
         publishCompletedEventIfNeeded(budget, message.errorMessage());
 
         LOGGER.info(
-                "Budget calculation result applied. budgetId={}, status={}, calculatedAmount={}",
+                "Budget calculation result applied. budgetId={}, correlationId={}, status={}, calculatedAmount={}",
                 message.budgetId(),
+                message.correlationId(),
                 budget.getStatus(),
                 budget.getCalculatedAmount()
         );
@@ -134,6 +147,12 @@ public class BudgetOrchestrationService {
         budgetRepository.save(budget);
     }
 
+    private void ensureCorrelationId(BudgetDocument budget, UUID messageCorrelationId) {
+        if (budget.getCorrelationId() == null) {
+            budget.setCorrelationId(messageCorrelationId == null ? UUID.randomUUID() : messageCorrelationId);
+        }
+    }
+
     private void markAsCalculationRequested(BudgetDocument budget) {
         budget.setStatus(BudgetStatus.CALCULATION_REQUESTED);
         budget.setUpdatedAt(Instant.now());
@@ -147,6 +166,9 @@ public class BudgetOrchestrationService {
         }
 
         budgetEventPublisher.publish(new BudgetEventMessage(
+                BUDGET_COMPLETED_EVENT,
+                EVENT_VERSION,
+                budget.getCorrelationId(),
                 budget.getId(),
                 budget.getCustomerName(),
                 budget.getDescription(),

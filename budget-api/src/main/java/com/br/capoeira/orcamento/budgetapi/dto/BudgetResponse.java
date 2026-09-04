@@ -12,6 +12,9 @@ public record BudgetResponse(
         @Schema(description = "Identificador UUID do orcamento", example = "7f0b0f0d-1d72-4e63-b4b1-2f50f958f527")
         UUID id,
 
+        @Schema(description = "Identificador de correlacao usado para rastrear o fluxo assincrono", example = "297f2678-4088-4892-bb73-57031937f219")
+        UUID correlationId,
+
         @Schema(description = "Nome do cliente solicitante", example = "Ricardo Alves")
         String customerName,
 

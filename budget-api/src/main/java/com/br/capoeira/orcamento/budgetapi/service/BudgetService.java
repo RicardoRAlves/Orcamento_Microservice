@@ -19,6 +19,9 @@ import java.util.UUID;
 @Service
 public class BudgetService {
 
+    private static final String BUDGET_REQUESTED_EVENT = "BUDGET_REQUESTED";
+    private static final String EVENT_VERSION = "1.0";
+
     private final BudgetRepository budgetRepository;
     private final BudgetRequestPublisher budgetRequestPublisher;
 
@@ -36,6 +39,7 @@ public class BudgetService {
 
         var budget = new BudgetDocument();
         budget.setId(UUID.randomUUID());
+        budget.setCorrelationId(UUID.randomUUID());
         budget.setCustomerName(request.customerName());
         budget.setDescription(request.description());
         budget.setAmount(request.amount());
@@ -83,6 +87,9 @@ public class BudgetService {
 
     private BudgetRequestMessage toMessage(BudgetDocument budget) {
         return new BudgetRequestMessage(
+                BUDGET_REQUESTED_EVENT,
+                EVENT_VERSION,
+                budget.getCorrelationId(),
                 budget.getId(),
                 budget.getCustomerName(),
                 budget.getDescription(),
@@ -95,6 +102,7 @@ public class BudgetService {
     private BudgetResponse toResponse(BudgetDocument budget) {
         return new BudgetResponse(
                 budget.getId(),
+                budget.getCorrelationId(),
                 budget.getCustomerName(),
                 budget.getDescription(),
                 budget.getAmount(),

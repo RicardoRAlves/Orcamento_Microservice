@@ -20,6 +20,9 @@ class BudgetLambdaApplicationTests {
         SNSEvent.SNS sns = new SNSEvent.SNS();
         sns.setMessage("""
                 {
+                  "eventType": "BUDGET_COMPLETED",
+                  "eventVersion": "1.0",
+                  "correlationId": "22222222-2222-2222-2222-222222222222",
                   "budgetId": "11111111-1111-1111-1111-111111111111",
                   "customerName": "Ricardo Alves",
                   "description": "Teste auditoria",

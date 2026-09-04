@@ -7,7 +7,7 @@ O objetivo do projeto e separar o fluxo de solicitacao, processamento, calculo e
 Estado atual do projeto:
 
 - `budget-api` recebe e consulta orcamentos via REST.
-- `budget-api` salva o orcamento no MongoDB e publica uma mensagem na fila `budget-requests`.
+- `budget-api` salva o orcamento no MongoDB, gera um `correlationId` e publica uma mensagem na fila `budget-requests`.
 - `budget-orchestrator` consome `budget-requests`, atualiza o status no MongoDB e publica uma mensagem para `budget-calculation-requests`.
 - `budget-calculator` consome `budget-calculation-requests`, calcula o valor e publica o resultado em `budget-calculation-results`.
 - `budget-orchestrator` consome `budget-calculation-results` e atualiza o MongoDB com `CALCULATED` ou `FAILED`.
@@ -16,6 +16,7 @@ Estado atual do projeto:
 - SNS aciona a Lambda `budget-audit-lambda` para auditoria serverless do evento final.
 - `notification-service` consome `notification-requests` e simula o envio da notificacao via log estruturado.
 - As filas principais possuem DLQ configurada no LocalStack.
+- Os contratos de mensagem usam `eventType`, `eventVersion` e `correlationId` para rastreabilidade e evolucao.
 
 ## Visao geral
 
@@ -48,6 +49,7 @@ Responsabilidades previstas:
 - Persistir o orcamento no MongoDB com status inicial `RECEIVED`.
 - Publicar solicitacoes validas na fila `budget-requests`.
 - Marcar o orcamento como `PUBLISH_FAILED` quando nao conseguir publicar no SQS.
+- Gerar e retornar o `correlationId` usado para rastrear todo o fluxo assincrono.
 - Centralizar respostas de erro em um `GlobalExceptionHandler`.
 - Expor documentacao OpenAPI/Swagger para facilitar testes.
 - Disponibilizar endpoints operacionais via Actuator.
@@ -71,17 +73,19 @@ Responsabilidades previstas:
 - Converter a mensagem de entrada para o modelo interno de orquestracao.
 - Atualizar o status do orcamento no MongoDB de forma idempotente.
 - Publicar solicitacoes de calculo na fila `budget-calculation-requests`.
+- Propagar `eventType`, `eventVersion` e `correlationId` entre as mensagens.
 - Controlar estados do processamento, como `RECEIVED`, `PROCESSING`, `CALCULATION_REQUESTED`, `CALCULATED` e `FAILED`.
 - Evitar duplicidade: se o orcamento ja estiver `CALCULATION_REQUESTED`, `CALCULATED` ou `FAILED`, a mensagem reprocessada nao gera nova publicacao.
 - Nao deletar a mensagem original quando houver erro de leitura, persistencia ou publicacao para o calculator; isso permite retry automatico do SQS.
 - Publicar eventos finais de dominio no topico SNS `budget-events`.
-- Publicar pedidos de notificacao quando o resultado do calculo estiver concluido.
+- Publicar o evento final que alimenta notificacao e auditoria Lambda quando o resultado do calculo estiver concluido.
 
 Tecnologias principais:
 
 - Spring Boot
 - Spring Data MongoDB
 - AWS SDK SQS
+- AWS SDK SNS
 - Spring Boot Actuator
 
 ### `budget-calculator`
@@ -94,6 +98,7 @@ Responsabilidades previstas:
 - Manter a logica de calculo isolada dos detalhes de transporte HTTP, SQS ou Lambda.
 - Consumir solicitacoes de calculo da fila `budget-calculation-requests`.
 - Publicar o resultado do calculo na fila `budget-calculation-results`.
+- Preservar o mesmo `correlationId` recebido do orquestrador.
 - Expor uma interface de calculo que possa ser usada por testes e por adapters de mensageria.
 - Validar consistencia dos itens do orcamento antes de calcular totais.
 - Facilitar testes unitarios das regras de negocio sem depender da infraestrutura AWS.
@@ -113,6 +118,7 @@ Responsabilidades previstas:
 - Consumir mensagens da fila `notification-requests`.
 - Montar mensagens de notificacao com base no status e no resultado do orcamento.
 - Simular envio de notificacao registrando o evento processado em log.
+- Registrar `eventType`, `eventVersion` e `correlationId` no log de notificacao.
 - Deletar a mensagem somente apos o processamento da notificacao.
 - Encapsular integracoes futuras com e-mail, SMS, WhatsApp, webhooks ou outro canal.
 - Evitar que falhas de notificacao bloqueiem o calculo do orcamento.
@@ -132,7 +138,7 @@ Responsabilidades previstas:
 
 - Expor uma funcao Spring Cloud Function chamada `processBudgetEvent`.
 - Ser acionado por eventos publicados no SNS.
-- Registrar auditoria tecnica do fluxo, como status final, falhas, tempo de processamento ou integracoes futuras.
+- Registrar auditoria tecnica do fluxo com `eventType`, `eventVersion`, `correlationId`, status final, valores e horario do evento.
 - Gerar um artefato empacotado com `maven-shade-plugin`, adequado para deploy em Lambda.
 - Reaproveitar contratos e regras do fluxo principal quando o projeto evoluir para bibliotecas compartilhadas.
 
@@ -234,6 +240,43 @@ flowchart TB
     NR --> Notifications[notification-service]
     NR -. falha apos retries .-> NRDLQ
 ```
+
+## Contratos de mensagens
+
+Todas as mensagens do fluxo usam campos de envelope para evolucao e observabilidade:
+
+- `eventType`: identifica o tipo de evento ou comando.
+- `eventVersion`: versao do contrato publicado.
+- `correlationId`: identificador unico gerado na API e propagado ate o fim do fluxo.
+
+Eventos atuais:
+
+| Etapa | Transporte | `eventType` | `eventVersion` |
+| --- | --- | --- | --- |
+| API para Orchestrator | SQS `budget-requests` | `BUDGET_REQUESTED` | `1.0` |
+| Orchestrator para Calculator | SQS `budget-calculation-requests` | `BUDGET_CALCULATION_REQUESTED` | `1.0` |
+| Calculator para Orchestrator | SQS `budget-calculation-results` | `BUDGET_CALCULATION_FINISHED` | `1.0` |
+| Orchestrator para subscribers | SNS `budget-events` | `BUDGET_COMPLETED` | `1.0` |
+
+Exemplo de evento final:
+
+```json
+{
+  "eventType": "BUDGET_COMPLETED",
+  "eventVersion": "1.0",
+  "correlationId": "297f2678-4088-4892-bb73-57031937f219",
+  "budgetId": "7f0b0f0d-1d72-4e63-b4b1-2f50f958f527",
+  "customerName": "Ricardo Alves",
+  "description": "Orcamento para teste no Swagger",
+  "originalAmount": 1500.00,
+  "calculatedAmount": 1350.00,
+  "status": "CALCULATED",
+  "errorMessage": null,
+  "occurredAt": "2026-09-04T14:00:00Z"
+}
+```
+
+Os publishers tambem enviam `eventType`, `eventVersion` e `correlationId` como atributos de mensagem no SQS/SNS, facilitando inspecao e filtros futuros.
 
 ## Estados do orcamento
 
@@ -424,6 +467,7 @@ Execute `POST /budgets` com um payload valido:
 ```
 
 Se a criacao funcionar, a API retorna `202 Accepted` com status `RECEIVED` e publica uma mensagem na fila `budget-requests`.
+Guarde o `id` e o `correlationId` retornados; o `correlationId` deve aparecer nos logs e mensagens dos demais modulos.
 
 Com o `budget-orchestrator` rodando, ele consome a mensagem de `budget-requests`, atualiza o status para `PROCESSING`, publica uma mensagem em `budget-calculation-requests` e atualiza o status para `CALCULATION_REQUESTED`.
 
@@ -439,6 +483,12 @@ Para ver a mensagem na fila sem instalar o AWS CLI localmente:
 
 ```bash
 docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-requests
+```
+
+Para incluir os atributos de rastreio na leitura da fila:
+
+```bash
+docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-requests --message-attribute-names All
 ```
 
 Para ver a mensagem enviada ao calculator:
@@ -491,6 +541,12 @@ Para ver logs da Lambda de auditoria:
 docker exec orcamento-localstack awslocal logs filter-log-events --log-group-name /aws/lambda/budget-audit-lambda
 ```
 
+Para filtrar rapidamente pelos ultimos logs da Lambda:
+
+```bash
+docker exec orcamento-localstack awslocal logs filter-log-events --log-group-name /aws/lambda/budget-audit-lambda --query "events[-5:].message" --output text
+```
+
 Para inspecionar mensagens que chegaram na DLQ:
 
 ```bash
@@ -534,6 +590,7 @@ docker exec orcamento-localstack awslocal sqs get-queue-attributes --queue-url h
 Regras aplicadas ate agora:
 
 - A API valida entrada invalida antes de salvar/publicar.
+- A API gera `correlationId` no inicio do fluxo e esse valor acompanha todas as mensagens.
 - A API trata erro de publicacao no SQS, marca o orcamento como `PUBLISH_FAILED` e responde erro controlado.
 - O orquestrador so deleta a mensagem de `budget-requests` depois que o processamento local e a publicacao para `budget-calculation-requests` terminam com sucesso.
 - O calculator so deleta a mensagem de `budget-calculation-requests` depois que o calculo e a publicacao para `budget-calculation-results` terminam com sucesso.
@@ -544,6 +601,24 @@ Regras aplicadas ate agora:
 - O notification-service so deleta a mensagem de `notification-requests` depois de processar a notificacao com sucesso.
 - Se a mensagem de entrada estiver invalida, se o MongoDB falhar ou se alguma publicacao falhar, a mensagem nao e deletada; o SQS faz retry e depois move para DLQ.
 - O status `CALCULATION_REQUESTED` evita publicacao duplicada para o calculator quando uma mensagem ja processada for entregue novamente.
+- O campo `completedEventPublishedAt` evita republicar evento final depois que o SNS ja aceitou o evento.
+
+## Estrategia de testes
+
+Neste momento o projeto usa testes de contexto Spring Boot e validacao local com MongoDB + LocalStack via Docker Compose.
+
+Para o portfolio, isso deixa o fluxo demonstravel sem adicionar custo de complexidade agora. Uma evolucao natural seria adicionar Testcontainers para subir MongoDB e LocalStack automaticamente durante testes de integracao, cobrindo o fluxo completo sem depender de infraestrutura ja iniciada na maquina.
+
+Roteiro recomendado para validacao ponta a ponta:
+
+1. Empacote a Lambda com `mvn -pl budget-lambda package`.
+2. Suba MongoDB e LocalStack com `docker compose up -d`.
+3. Rode `budget-api`, `budget-orchestrator`, `budget-calculator` e `notification-service`.
+4. Crie um orcamento pelo Swagger ou `POST /budgets`.
+5. Consulte `GET /budgets/{id}` ate o status chegar em `CALCULATED`.
+6. Confira nos logs dos servicos o mesmo `correlationId`.
+7. Confira os logs da Lambda em `/aws/lambda/budget-audit-lambda`.
+8. Se algo falhar, consulte as DLQs correspondentes.
 
 ## Direcionamento de arquitetura
 

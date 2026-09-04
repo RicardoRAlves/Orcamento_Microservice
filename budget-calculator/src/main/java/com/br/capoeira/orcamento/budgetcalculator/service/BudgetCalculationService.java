@@ -16,6 +16,8 @@ import java.time.Instant;
 public class BudgetCalculationService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BudgetCalculationService.class);
+    private static final String CALCULATION_FINISHED_EVENT = "BUDGET_CALCULATION_FINISHED";
+    private static final String EVENT_VERSION = "1.0";
     private static final BigDecimal DISCOUNT_THRESHOLD = BigDecimal.valueOf(1000);
     private static final BigDecimal DISCOUNT_RATE = BigDecimal.valueOf(0.10);
 
@@ -30,6 +32,9 @@ public class BudgetCalculationService {
 
         var calculatedAmount = applyBusinessRules(message.amount());
         var result = new BudgetCalculationResultMessage(
+                CALCULATION_FINISHED_EVENT,
+                EVENT_VERSION,
+                message.correlationId(),
                 message.budgetId(),
                 message.amount(),
                 calculatedAmount,
@@ -41,8 +46,9 @@ public class BudgetCalculationService {
         budgetCalculationResultPublisher.publish(result);
 
         LOGGER.info(
-                "Budget calculated. budgetId={}, originalAmount={}, calculatedAmount={}",
+                "Budget calculated. budgetId={}, correlationId={}, originalAmount={}, calculatedAmount={}",
                 message.budgetId(),
+                message.correlationId(),
                 message.amount(),
                 calculatedAmount
         );

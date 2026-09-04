@@ -5,6 +5,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record BudgetRequestMessage(
+        String eventType,
+        String eventVersion,
+        UUID correlationId,
         UUID budgetId,
         String customerName,
         String description,

@@ -11,8 +11,11 @@ import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SqsException;
+
+import java.util.Map;
 
 @Component
 public class BudgetCalculationResultPublisher {
@@ -42,21 +45,49 @@ public class BudgetCalculationResultPublisher {
             sqsClient.sendMessage(SendMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .messageBody(objectMapper.writeValueAsString(message))
+                    .messageAttributes(messageAttributes(message))
                     .build());
 
-            LOGGER.info("Budget calculation result published. budgetId={}, queueName={}", message.budgetId(), queueName);
+            LOGGER.info(
+                    "Budget calculation result published. budgetId={}, correlationId={}, queueName={}",
+                    message.budgetId(),
+                    message.correlationId(),
+                    queueName
+            );
         } catch (JsonProcessingException exception) {
-            LOGGER.error("Could not serialize budget calculation result. budgetId={}, queueName={}", message.budgetId(), queueName, exception);
+            LOGGER.error(
+                    "Could not serialize budget calculation result. budgetId={}, correlationId={}, queueName={}",
+                    message.budgetId(),
+                    message.correlationId(),
+                    queueName,
+                    exception
+            );
             throw new BudgetCalculationResultPublishException(message.budgetId(), "Could not serialize budget calculation result", exception);
         } catch (SqsException | SdkClientException exception) {
             LOGGER.error(
-                    "Could not publish budget calculation result. budgetId={}, queueName={}, error={}",
+                    "Could not publish budget calculation result. budgetId={}, correlationId={}, queueName={}, error={}",
                     message.budgetId(),
+                    message.correlationId(),
                     queueName,
                     exception.getMessage(),
                     exception
             );
             throw new BudgetCalculationResultPublishException(message.budgetId(), "Could not publish budget calculation result", exception);
         }
+    }
+
+    private Map<String, MessageAttributeValue> messageAttributes(BudgetCalculationResultMessage message) {
+        return Map.of(
+                "eventType", stringAttribute(message.eventType()),
+                "eventVersion", stringAttribute(message.eventVersion()),
+                "correlationId", stringAttribute(message.correlationId().toString())
+        );
+    }
+
+    private MessageAttributeValue stringAttribute(String value) {
+        return MessageAttributeValue.builder()
+                .dataType("String")
+                .stringValue(value)
+                .build();
     }
 }
