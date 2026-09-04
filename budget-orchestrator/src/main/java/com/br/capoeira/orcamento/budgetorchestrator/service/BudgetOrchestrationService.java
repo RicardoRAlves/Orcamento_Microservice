@@ -1,6 +1,7 @@
 package com.br.capoeira.orcamento.budgetorchestrator.service;
 
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetCalculationRequestMessage;
+import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetCalculationResultMessage;
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetRequestMessage;
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetStatus;
 import com.br.capoeira.orcamento.budgetorchestrator.exception.BudgetProcessingException;
@@ -72,9 +73,51 @@ public class BudgetOrchestrationService {
         );
     }
 
+    public void finishCalculation(BudgetCalculationResultMessage message) {
+        validate(message);
+
+        var budget = budgetRepository.findById(message.budgetId())
+                .orElseThrow(() -> new BudgetProcessingException(
+                        "Budget not found for calculation result. budgetId=%s".formatted(message.budgetId())
+                ));
+
+        if (budget.getStatus() == BudgetStatus.CALCULATED || budget.getStatus() == BudgetStatus.FAILED) {
+            LOGGER.info("Skipping already finalized budget. budgetId={}, status={}", message.budgetId(), budget.getStatus());
+            return;
+        }
+
+        if ("CALCULATED".equalsIgnoreCase(message.status())) {
+            budget.setCalculatedAmount(message.calculatedAmount());
+            budget.setStatus(BudgetStatus.CALCULATED);
+        } else {
+            budget.setStatus(BudgetStatus.FAILED);
+        }
+
+        budget.setProcessedAt(message.calculatedAt() == null ? Instant.now() : message.calculatedAt());
+        budget.setUpdatedAt(Instant.now());
+        budgetRepository.save(budget);
+
+        LOGGER.info(
+                "Budget calculation result applied. budgetId={}, status={}, calculatedAmount={}",
+                message.budgetId(),
+                budget.getStatus(),
+                budget.getCalculatedAmount()
+        );
+    }
+
     private void validate(BudgetRequestMessage message) {
         if (message == null || message.budgetId() == null) {
             throw new BudgetProcessingException("Budget request message must contain budgetId");
+        }
+    }
+
+    private void validate(BudgetCalculationResultMessage message) {
+        if (message == null || message.budgetId() == null) {
+            throw new BudgetProcessingException("Budget calculation result message must contain budgetId");
+        }
+
+        if ("CALCULATED".equalsIgnoreCase(message.status()) && message.calculatedAmount() == null) {
+            throw new BudgetProcessingException("Budget calculation result message must contain calculatedAmount");
         }
     }
 

@@ -15,3 +15,5 @@ aws:
     budget-requests-dlq: budget-requests-dlq
     budget-calculation-requests-queue: budget-calculation-requests
     budget-calculation-requests-dlq: budget-calculation-requests-dlq
+    budget-calculation-results-queue: budget-calculation-results
+    budget-calculation-results-dlq: budget-calculation-results-dlq

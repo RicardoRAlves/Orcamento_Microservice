@@ -1,0 +1,10 @@
+aws:
+  region: us-east-1
+  endpoint: http://localhost:4566
+  access-key: test
+  secret-key: test
+  sqs:
+    consumer:
+      enabled: false
+    budget-calculation-requests-queue: budget-calculation-requests
+    budget-calculation-results-queue: budget-calculation-results

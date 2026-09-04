@@ -17,6 +17,7 @@ create_queue_with_dlq() {
 
 create_queue_with_dlq budget-requests
 create_queue_with_dlq budget-calculation-requests
+create_queue_with_dlq budget-calculation-results
 
 awslocal sqs create-queue --queue-name budget-events
 awslocal sqs create-queue --queue-name notification-requests

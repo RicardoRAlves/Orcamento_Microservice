@@ -1,13 +1,26 @@
 spring:
   application:
-    name: budget-calculator
+    name: ${SPRING_APPLICATION_NAME:budget-calculator}
 
 server:
-  port: 8082
+  port: ${SERVER_PORT:8082}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
 
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint: ${AWS_ENDPOINT:http://localhost:4566}
+  access-key: ${AWS_ACCESS_KEY_ID:test}
+  secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+  sqs:
+    consumer:
+      enabled: ${SQS_CONSUMER_ENABLED:true}
+    budget-calculation-requests-queue: ${BUDGET_CALCULATION_REQUESTS_QUEUE:budget-calculation-requests}
+    budget-calculation-results-queue: ${BUDGET_CALCULATION_RESULTS_QUEUE:budget-calculation-results}
+    max-messages: ${SQS_MAX_MESSAGES:10}
+    wait-time-seconds: ${SQS_WAIT_TIME_SECONDS:5}
+    polling-delay-ms: ${SQS_POLLING_DELAY_MS:3000}

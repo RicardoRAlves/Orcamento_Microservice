@@ -1,10 +1,9 @@
 spring:
   application:
-    name: notification-service
+    name: ${SPRING_APPLICATION_NAME:notification-service}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
-
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}

@@ -1,6 +1,6 @@
 spring:
   application:
-    name: budget-orchestrator
+    name: ${SPRING_APPLICATION_NAME:budget-orchestrator}
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb://localhost:27018/orcamento}
@@ -9,7 +9,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
 
 aws:
   region: ${AWS_REGION:us-east-1}
@@ -23,6 +23,8 @@ aws:
     budget-requests-dlq: ${BUDGET_REQUESTS_DLQ:budget-requests-dlq}
     budget-calculation-requests-queue: ${BUDGET_CALCULATION_REQUESTS_QUEUE:budget-calculation-requests}
     budget-calculation-requests-dlq: ${BUDGET_CALCULATION_REQUESTS_DLQ:budget-calculation-requests-dlq}
+    budget-calculation-results-queue: ${BUDGET_CALCULATION_RESULTS_QUEUE:budget-calculation-results}
+    budget-calculation-results-dlq: ${BUDGET_CALCULATION_RESULTS_DLQ:budget-calculation-results-dlq}
     max-messages: ${SQS_MAX_MESSAGES:10}
     wait-time-seconds: ${SQS_WAIT_TIME_SECONDS:5}
     polling-delay-ms: ${SQS_POLLING_DELAY_MS:3000}

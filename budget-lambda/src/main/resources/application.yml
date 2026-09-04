@@ -1,7 +1,6 @@
 spring:
   application:
-    name: budget-lambda
+    name: ${SPRING_APPLICATION_NAME:budget-lambda}
   cloud:
     function:
-      definition: processBudgetRequest
-
+      definition: ${SPRING_CLOUD_FUNCTION_DEFINITION:processBudgetRequest}

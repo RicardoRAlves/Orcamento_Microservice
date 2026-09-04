@@ -1,26 +1,27 @@
 services:
   mongodb:
-    image: mongo:7
-    container_name: orcamento-mongodb
+    image: ${MONGODB_IMAGE:-mongo:7}
+    container_name: ${MONGODB_CONTAINER_NAME:-orcamento-mongodb}
     ports:
-      - "27018:27017"
+      - "${MONGODB_PORT:-27018}:27017"
     environment:
-      - MONGO_INITDB_DATABASE=orcamento
+      - MONGO_INITDB_DATABASE=${MONGO_INITDB_DATABASE:-orcamento}
     volumes:
       - mongodb-data:/data/db
 
   localstack:
-    image: localstack/localstack:3
-    container_name: orcamento-localstack
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:3}
+    container_name: ${LOCALSTACK_CONTAINER_NAME:-orcamento-localstack}
     ports:
-      - "4566:4566"
+      - "${LOCALSTACK_PORT:-4566}:4566"
     environment:
-      - SERVICES=sqs,lambda,iam,logs
-      - AWS_DEFAULT_REGION=us-east-1
-      - DEBUG=0
+      - SERVICES=${LOCALSTACK_SERVICES:-sqs,lambda,iam,logs}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - DEBUG=${LOCALSTACK_DEBUG:-0}
     volumes:
-      - "./localstack/init:/etc/localstack/init/ready.d"
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "${LOCALSTACK_INIT_PATH:-./localstack/init}:/etc/localstack/init/ready.d"
+      - "${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock"
 
 volumes:
   mongodb-data:
+    name: ${MONGODB_VOLUME_NAME:-mongodb-data}

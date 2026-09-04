@@ -9,6 +9,8 @@ Estado atual do projeto:
 - `budget-api` recebe e consulta orcamentos via REST.
 - `budget-api` salva o orcamento no MongoDB e publica uma mensagem na fila `budget-requests`.
 - `budget-orchestrator` consome `budget-requests`, atualiza o status no MongoDB e publica uma mensagem para `budget-calculation-requests`.
+- `budget-calculator` consome `budget-calculation-requests`, calcula o valor e publica o resultado em `budget-calculation-results`.
+- `budget-orchestrator` consome `budget-calculation-results` e atualiza o MongoDB com `CALCULATED` ou `FAILED`.
 - As filas principais possuem DLQ configurada no LocalStack.
 - `budget-calculator`, `notification-service`, `budget-lambda` e SNS estao preparados como proximas etapas de evolucao.
 
@@ -21,7 +23,8 @@ flowchart LR
     QueueRequests --> Orchestrator[budget-orchestrator]
     Orchestrator --> QueueCalculation[(SQS: budget-calculation-requests)]
     QueueCalculation --> Calculator[budget-calculator]
-    Calculator -. proxima etapa .-> Orchestrator
+    Calculator --> QueueResults[(SQS: budget-calculation-results)]
+    QueueResults --> Orchestrator
     Orchestrator -. proxima etapa .-> TopicEvents[(SNS: budget-events)]
     TopicEvents -. fanout .-> QueueNotifications[(SQS: notification-requests)]
     QueueNotifications --> Notification[notification-service]
@@ -87,7 +90,7 @@ Responsabilidades previstas:
 - Centralizar regras de precificacao, descontos, taxas, adicionais e totais.
 - Manter a logica de calculo isolada dos detalhes de transporte HTTP, SQS ou Lambda.
 - Consumir solicitacoes de calculo da fila `budget-calculation-requests`.
-- Publicar o resultado do calculo para o `budget-orchestrator` quando a etapa for implementada.
+- Publicar o resultado do calculo na fila `budget-calculation-results`.
 - Expor uma interface de calculo que possa ser usada por testes e por adapters de mensageria.
 - Validar consistencia dos itens do orcamento antes de calcular totais.
 - Facilitar testes unitarios das regras de negocio sem depender da infraestrutura AWS.
@@ -147,6 +150,7 @@ sequenceDiagram
     participant P as budget-orchestrator
     participant QC as SQS budget-calculation-requests
     participant Calc as budget-calculator
+    participant QR as SQS budget-calculation-results
     participant SNS as SNS budget-events
     participant L as budget-lambda
     participant Q2 as SQS notification-requests
@@ -161,7 +165,10 @@ sequenceDiagram
     P->>QC: Publica BudgetCalculationRequest
     P->>P: Atualiza status para CALCULATION_REQUESTED
     Calc->>QC: Consome BudgetCalculationRequest
-    Calc-->>P: Retorna resultado calculado em etapa futura
+    Calc->>Calc: Aplica regra de calculo
+    Calc->>QR: Publica BudgetCalculationResult
+    P->>QR: Consome BudgetCalculationResult
+    P->>P: Atualiza status para CALCULATED ou FAILED
     P->>SNS: Publica evento final em etapa futura
     SNS->>L: Aciona auditoria serverless
     SNS->>Q2: Entrega evento para notificacao
@@ -177,10 +184,12 @@ O ambiente local usa LocalStack para simular servicos AWS. O script `localstack/
 - `budget-requests-dlq`: mensagens de `budget-requests` que falharam apos as tentativas configuradas.
 - `budget-calculation-requests`: entrada das solicitacoes de calculo para o `budget-calculator`.
 - `budget-calculation-requests-dlq`: mensagens de calculo que falharam apos as tentativas configuradas.
+- `budget-calculation-results`: resultados de calculo enviados pelo `budget-calculator` para o `budget-orchestrator`.
+- `budget-calculation-results-dlq`: resultados de calculo que falharam apos as tentativas configuradas.
 - `budget-events`: eventos de dominio ou status emitidos durante o processamento.
 - `notification-requests`: solicitacoes de notificacao geradas pelo fluxo.
 
-As filas `budget-requests` e `budget-calculation-requests` sao criadas com:
+As filas `budget-requests`, `budget-calculation-requests` e `budget-calculation-results` sao criadas com:
 
 - `VisibilityTimeout`: `30` segundos.
 - `maxReceiveCount`: `3`.
@@ -193,6 +202,8 @@ flowchart TB
         BRDLQ[budget-requests-dlq]
         CR[budget-calculation-requests]
         CRDLQ[budget-calculation-requests-dlq]
+        RS[budget-calculation-results]
+        RSDLQ[budget-calculation-results-dlq]
         BE[budget-events]
         NR[notification-requests]
     end
@@ -203,6 +214,9 @@ flowchart TB
     Orchestrator --> CR
     CR --> Calculator[budget-calculator]
     CR -. falha apos retries .-> CRDLQ
+    Calculator --> RS
+    RS --> Orchestrator
+    RS -. falha apos retries .-> RSDLQ
     Orchestrator -. proxima etapa .-> BE
     BE -. proxima etapa .-> NR
     NR --> Notifications[notification-service]
@@ -258,6 +272,53 @@ Para conferir as filas criadas usando o LocalStack:
 ```bash
 docker exec orcamento-localstack awslocal sqs list-queues
 ```
+
+## Variaveis de ambiente
+
+Os `application.yml` usam variaveis com fallback local. Isso permite rodar sem configuracao extra em desenvolvimento e trocar valores no deploy.
+
+Variaveis comuns:
+
+- `SPRING_APPLICATION_NAME`: nome da aplicacao Spring.
+- `SERVER_PORT`: porta HTTP do servico, quando o modulo expuser servidor web.
+- `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE`: endpoints do Actuator expostos.
+- `AWS_REGION`: regiao AWS.
+- `AWS_ENDPOINT`: endpoint customizado para LocalStack. Em ambiente AWS real, a configuracao do client deve evoluir para nao usar endpoint override.
+- `AWS_ACCESS_KEY_ID`: access key usada pelo SDK.
+- `AWS_SECRET_ACCESS_KEY`: secret key usada pelo SDK.
+- `SQS_CONSUMER_ENABLED`: liga ou desliga consumers SQS.
+- `SQS_MAX_MESSAGES`: maximo de mensagens lidas por polling.
+- `SQS_WAIT_TIME_SECONDS`: tempo de long polling.
+- `SQS_POLLING_DELAY_MS`: intervalo entre ciclos de polling.
+
+Variaveis de banco:
+
+- `MONGODB_URI`: URI de conexao com o MongoDB.
+
+Variaveis de filas:
+
+- `BUDGET_REQUESTS_QUEUE`
+- `BUDGET_REQUESTS_DLQ`
+- `BUDGET_CALCULATION_REQUESTS_QUEUE`
+- `BUDGET_CALCULATION_REQUESTS_DLQ`
+- `BUDGET_CALCULATION_RESULTS_QUEUE`
+- `BUDGET_CALCULATION_RESULTS_DLQ`
+
+Variaveis do `docker-compose.yml`:
+
+- `MONGODB_IMAGE`
+- `MONGODB_CONTAINER_NAME`
+- `MONGODB_PORT`
+- `MONGO_INITDB_DATABASE`
+- `MONGODB_VOLUME_NAME`
+- `LOCALSTACK_IMAGE`
+- `LOCALSTACK_CONTAINER_NAME`
+- `LOCALSTACK_PORT`
+- `LOCALSTACK_SERVICES`
+- `AWS_DEFAULT_REGION`
+- `LOCALSTACK_DEBUG`
+- `LOCALSTACK_INIT_PATH`
+- `DOCKER_SOCKET_PATH`
 
 ## Comandos
 
@@ -331,6 +392,8 @@ Se a criacao funcionar, a API retorna `202 Accepted` com status `RECEIVED` e pub
 
 Com o `budget-orchestrator` rodando, ele consome a mensagem de `budget-requests`, atualiza o status para `PROCESSING`, publica uma mensagem em `budget-calculation-requests` e atualiza o status para `CALCULATION_REQUESTED`.
 
+Com o `budget-calculator` rodando, ele consome `budget-calculation-requests`, aplica a regra de calculo inicial e publica o resultado em `budget-calculation-results`. A regra atual aplica 10% de desconto para valores acima de `1000`.
+
 Para ver a mensagem na fila sem instalar o AWS CLI localmente:
 
 ```bash
@@ -344,6 +407,12 @@ docker exec orcamento-localstack awslocal sqs receive-message --queue-url http:/
 ```
 
 Se esse comando nao retornar nada, verifique primeiro se o `budget-orchestrator` esta rodando. A API so publica em `budget-requests`; quem publica em `budget-calculation-requests` e o orquestrador.
+
+Para ver o resultado publicado pelo calculator:
+
+```bash
+docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-calculation-results --visibility-timeout 5
+```
 
 Se quiser ver a mesma mensagem mais de uma vez durante testes, use um visibility timeout curto:
 
@@ -369,6 +438,12 @@ Para inspecionar a DLQ do calculator:
 docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-calculation-requests-dlq
 ```
 
+Para inspecionar a DLQ de resultados do calculator:
+
+```bash
+docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-calculation-results-dlq
+```
+
 Para consultar a quantidade aproximada de mensagens na fila do calculator:
 
 ```bash
@@ -390,7 +465,9 @@ Regras aplicadas ate agora:
 - A API valida entrada invalida antes de salvar/publicar.
 - A API trata erro de publicacao no SQS, marca o orcamento como `PUBLISH_FAILED` e responde erro controlado.
 - O orquestrador so deleta a mensagem de `budget-requests` depois que o processamento local e a publicacao para `budget-calculation-requests` terminam com sucesso.
-- Se a mensagem de entrada estiver invalida, se o MongoDB falhar ou se a publicacao para o calculator falhar, a mensagem nao e deletada; o SQS faz retry e depois move para DLQ.
+- O calculator so deleta a mensagem de `budget-calculation-requests` depois que o calculo e a publicacao para `budget-calculation-results` terminam com sucesso.
+- O orquestrador so deleta a mensagem de `budget-calculation-results` depois que o MongoDB e atualizado com o resultado final.
+- Se a mensagem de entrada estiver invalida, se o MongoDB falhar ou se alguma publicacao falhar, a mensagem nao e deletada; o SQS faz retry e depois move para DLQ.
 - O status `CALCULATION_REQUESTED` evita publicacao duplicada para o calculator quando uma mensagem ja processada for entregue novamente.
 
 ## Direcionamento de arquitetura
@@ -418,9 +495,6 @@ Principios para evolucao dos modulos:
 
 ## Proximas etapas planejadas
 
-- Implementar o consumer do `budget-calculator` para consumir `budget-calculation-requests`.
-- Criar uma mensagem de resposta do calculator para o `budget-orchestrator`.
-- Persistir o resultado calculado no MongoDB com status `CALCULATED`.
 - Adicionar SNS para publicar eventos finais do orcamento.
 - Conectar SNS a `notification-service` via SQS.
 - Conectar SNS a `budget-lambda` para auditoria obrigatoria do fluxo.

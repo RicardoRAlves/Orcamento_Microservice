@@ -1,26 +1,26 @@
 spring:
   application:
-    name: budget-api
+    name: ${SPRING_APPLICATION_NAME:budget-api}
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb://localhost:27018/orcamento}
 
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
 
 springdoc:
   api-docs:
-    path: /v3/api-docs
+    path: ${SPRINGDOC_API_DOCS_PATH:/v3/api-docs}
   swagger-ui:
-    path: /swagger-ui.html
-    operations-sorter: method
-    tags-sorter: alpha
+    path: ${SPRINGDOC_SWAGGER_UI_PATH:/swagger-ui.html}
+    operations-sorter: ${SPRINGDOC_SWAGGER_UI_OPERATIONS_SORTER:method}
+    tags-sorter: ${SPRINGDOC_SWAGGER_UI_TAGS_SORTER:alpha}
 
 aws:
   region: ${AWS_REGION:us-east-1}
