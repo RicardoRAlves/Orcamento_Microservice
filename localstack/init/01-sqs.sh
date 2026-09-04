@@ -19,5 +19,20 @@ create_queue_with_dlq budget-requests
 create_queue_with_dlq budget-calculation-requests
 create_queue_with_dlq budget-calculation-results
 
-awslocal sqs create-queue --queue-name budget-events
-awslocal sqs create-queue --queue-name notification-requests
+BUDGET_EVENTS_TOPIC_ARN=$(awslocal sns create-topic \
+  --name budget-events \
+  --query TopicArn \
+  --output text)
+
+NOTIFICATION_QUEUE_URL=$(awslocal sqs create-queue --queue-name notification-requests --query QueueUrl --output text)
+NOTIFICATION_QUEUE_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url "$NOTIFICATION_QUEUE_URL" \
+  --attribute-names QueueArn \
+  --query 'Attributes.QueueArn' \
+  --output text)
+
+awslocal sns subscribe \
+  --topic-arn "$BUDGET_EVENTS_TOPIC_ARN" \
+  --protocol sqs \
+  --notification-endpoint "$NOTIFICATION_QUEUE_ARN" \
+  --attributes RawMessageDelivery=true

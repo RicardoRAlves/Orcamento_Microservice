@@ -2,11 +2,13 @@ package com.br.capoeira.orcamento.budgetorchestrator.service;
 
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetCalculationRequestMessage;
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetCalculationResultMessage;
+import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetEventMessage;
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetRequestMessage;
 import com.br.capoeira.orcamento.budgetorchestrator.dto.BudgetStatus;
 import com.br.capoeira.orcamento.budgetorchestrator.exception.BudgetProcessingException;
 import com.br.capoeira.orcamento.budgetorchestrator.model.BudgetDocument;
 import com.br.capoeira.orcamento.budgetorchestrator.producer.BudgetCalculationRequestPublisher;
+import com.br.capoeira.orcamento.budgetorchestrator.producer.BudgetEventPublisher;
 import com.br.capoeira.orcamento.budgetorchestrator.repository.BudgetRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,12 +23,15 @@ public class BudgetOrchestrationService {
 
     private final BudgetRepository budgetRepository;
     private final BudgetCalculationRequestPublisher budgetCalculationRequestPublisher;
+    private final BudgetEventPublisher budgetEventPublisher;
 
     public BudgetOrchestrationService(
             BudgetRepository budgetRepository,
-            BudgetCalculationRequestPublisher budgetCalculationRequestPublisher) {
+            BudgetCalculationRequestPublisher budgetCalculationRequestPublisher,
+            BudgetEventPublisher budgetEventPublisher) {
         this.budgetRepository = budgetRepository;
         this.budgetCalculationRequestPublisher = budgetCalculationRequestPublisher;
+        this.budgetEventPublisher = budgetEventPublisher;
     }
 
     public void process(BudgetRequestMessage message) {
@@ -82,7 +87,7 @@ public class BudgetOrchestrationService {
                 ));
 
         if (budget.getStatus() == BudgetStatus.CALCULATED || budget.getStatus() == BudgetStatus.FAILED) {
-            LOGGER.info("Skipping already finalized budget. budgetId={}, status={}", message.budgetId(), budget.getStatus());
+            publishCompletedEventIfNeeded(budget, message.errorMessage());
             return;
         }
 
@@ -96,6 +101,8 @@ public class BudgetOrchestrationService {
         budget.setProcessedAt(message.calculatedAt() == null ? Instant.now() : message.calculatedAt());
         budget.setUpdatedAt(Instant.now());
         budgetRepository.save(budget);
+
+        publishCompletedEventIfNeeded(budget, message.errorMessage());
 
         LOGGER.info(
                 "Budget calculation result applied. budgetId={}, status={}, calculatedAmount={}",
@@ -129,6 +136,28 @@ public class BudgetOrchestrationService {
 
     private void markAsCalculationRequested(BudgetDocument budget) {
         budget.setStatus(BudgetStatus.CALCULATION_REQUESTED);
+        budget.setUpdatedAt(Instant.now());
+        budgetRepository.save(budget);
+    }
+
+    private void publishCompletedEventIfNeeded(BudgetDocument budget, String errorMessage) {
+        if (budget.getCompletedEventPublishedAt() != null) {
+            LOGGER.info("Skipping already published budget event. budgetId={}, status={}", budget.getId(), budget.getStatus());
+            return;
+        }
+
+        budgetEventPublisher.publish(new BudgetEventMessage(
+                budget.getId(),
+                budget.getCustomerName(),
+                budget.getDescription(),
+                budget.getAmount(),
+                budget.getCalculatedAmount(),
+                budget.getStatus(),
+                errorMessage,
+                Instant.now()
+        ));
+
+        budget.setCompletedEventPublishedAt(Instant.now());
         budget.setUpdatedAt(Instant.now());
         budgetRepository.save(budget);
     }

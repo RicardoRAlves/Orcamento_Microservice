@@ -21,6 +21,7 @@ public class BudgetDocument {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant processedAt;
+    private Instant completedEventPublishedAt;
 
     public UUID getId() {
         return id;
@@ -92,5 +93,13 @@ public class BudgetDocument {
 
     public void setProcessedAt(Instant processedAt) {
         this.processedAt = processedAt;
+    }
+
+    public Instant getCompletedEventPublishedAt() {
+        return completedEventPublishedAt;
+    }
+
+    public void setCompletedEventPublishedAt(Instant completedEventPublishedAt) {
+        this.completedEventPublishedAt = completedEventPublishedAt;
     }
 }

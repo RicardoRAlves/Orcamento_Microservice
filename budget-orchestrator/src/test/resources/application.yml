@@ -17,3 +17,5 @@ aws:
     budget-calculation-requests-dlq: budget-calculation-requests-dlq
     budget-calculation-results-queue: budget-calculation-results
     budget-calculation-results-dlq: budget-calculation-results-dlq
+  sns:
+    budget-events-topic-arn: arn:aws:sns:us-east-1:000000000000:budget-events

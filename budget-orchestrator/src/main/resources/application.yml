@@ -28,3 +28,5 @@ aws:
     max-messages: ${SQS_MAX_MESSAGES:10}
     wait-time-seconds: ${SQS_WAIT_TIME_SECONDS:5}
     polling-delay-ms: ${SQS_POLLING_DELAY_MS:3000}
+  sns:
+    budget-events-topic-arn: ${BUDGET_EVENTS_TOPIC_ARN:arn:aws:sns:us-east-1:000000000000:budget-events}

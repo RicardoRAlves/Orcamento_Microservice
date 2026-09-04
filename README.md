@@ -11,8 +11,10 @@ Estado atual do projeto:
 - `budget-orchestrator` consome `budget-requests`, atualiza o status no MongoDB e publica uma mensagem para `budget-calculation-requests`.
 - `budget-calculator` consome `budget-calculation-requests`, calcula o valor e publica o resultado em `budget-calculation-results`.
 - `budget-orchestrator` consome `budget-calculation-results` e atualiza o MongoDB com `CALCULATED` ou `FAILED`.
+- `budget-orchestrator` publica o evento final no topico SNS `budget-events`.
+- SNS entrega o evento na fila `notification-requests`.
 - As filas principais possuem DLQ configurada no LocalStack.
-- `budget-calculator`, `notification-service`, `budget-lambda` e SNS estao preparados como proximas etapas de evolucao.
+- `notification-service` e `budget-lambda` estao preparados como proximas etapas de evolucao.
 
 ## Visao geral
 
@@ -25,8 +27,8 @@ flowchart LR
     QueueCalculation --> Calculator[budget-calculator]
     Calculator --> QueueResults[(SQS: budget-calculation-results)]
     QueueResults --> Orchestrator
-    Orchestrator -. proxima etapa .-> TopicEvents[(SNS: budget-events)]
-    TopicEvents -. fanout .-> QueueNotifications[(SQS: notification-requests)]
+    Orchestrator --> TopicEvents[(SNS: budget-events)]
+    TopicEvents --> QueueNotifications[(SQS: notification-requests)]
     QueueNotifications --> Notification[notification-service]
     TopicEvents -. auditoria .-> Lambda[budget-lambda]
 ```
@@ -71,7 +73,7 @@ Responsabilidades previstas:
 - Controlar estados do processamento, como `RECEIVED`, `PROCESSING`, `CALCULATION_REQUESTED`, `CALCULATED` e `FAILED`.
 - Evitar duplicidade: se o orcamento ja estiver `CALCULATION_REQUESTED`, `CALCULATED` ou `FAILED`, a mensagem reprocessada nao gera nova publicacao.
 - Nao deletar a mensagem original quando houver erro de leitura, persistencia ou publicacao para o calculator; isso permite retry automatico do SQS.
-- Publicar eventos de dominio em SNS quando o fluxo de eventos for implementado.
+- Publicar eventos finais de dominio no topico SNS `budget-events`.
 - Publicar pedidos de notificacao quando o resultado do calculo estiver concluido.
 
 Tecnologias principais:
@@ -169,16 +171,16 @@ sequenceDiagram
     Calc->>QR: Publica BudgetCalculationResult
     P->>QR: Consome BudgetCalculationResult
     P->>P: Atualiza status para CALCULATED ou FAILED
-    P->>SNS: Publica evento final em etapa futura
+    P->>SNS: Publica evento final
     SNS->>L: Aciona auditoria serverless
     SNS->>Q2: Entrega evento para notificacao
     N->>Q2: Consome notificacao
     N-->>C: Envia atualizacao pelo canal configurado
 ```
 
-## Filas locais
+## Filas e topicos locais
 
-O ambiente local usa LocalStack para simular servicos AWS. O script `localstack/init/01-sqs.sh` cria as filas:
+O ambiente local usa LocalStack para simular servicos AWS. O script `localstack/init/01-sqs.sh` cria as filas e topicos:
 
 - `budget-requests`: entrada principal das solicitacoes de orcamento.
 - `budget-requests-dlq`: mensagens de `budget-requests` que falharam apos as tentativas configuradas.
@@ -186,8 +188,12 @@ O ambiente local usa LocalStack para simular servicos AWS. O script `localstack/
 - `budget-calculation-requests-dlq`: mensagens de calculo que falharam apos as tentativas configuradas.
 - `budget-calculation-results`: resultados de calculo enviados pelo `budget-calculator` para o `budget-orchestrator`.
 - `budget-calculation-results-dlq`: resultados de calculo que falharam apos as tentativas configuradas.
-- `budget-events`: eventos de dominio ou status emitidos durante o processamento.
+- `budget-events`: topico SNS com eventos finais do orcamento.
 - `notification-requests`: solicitacoes de notificacao geradas pelo fluxo.
+
+Assinaturas SNS configuradas localmente:
+
+- `budget-events` -> SQS `notification-requests`, com `RawMessageDelivery=true`.
 
 As filas `budget-requests`, `budget-calculation-requests` e `budget-calculation-results` sao criadas com:
 
@@ -204,7 +210,7 @@ flowchart TB
         CRDLQ[budget-calculation-requests-dlq]
         RS[budget-calculation-results]
         RSDLQ[budget-calculation-results-dlq]
-        BE[budget-events]
+        BE[SNS: budget-events]
         NR[notification-requests]
     end
 
@@ -217,8 +223,8 @@ flowchart TB
     Calculator --> RS
     RS --> Orchestrator
     RS -. falha apos retries .-> RSDLQ
-    Orchestrator -. proxima etapa .-> BE
-    BE -. proxima etapa .-> NR
+    Orchestrator --> BE
+    BE --> NR
     NR --> Notifications[notification-service]
 ```
 
@@ -262,6 +268,7 @@ Servicos locais:
 - MongoDB: `localhost:27018`
 - LocalStack: `localhost:4566`
 - SQS no LocalStack: filas criadas por `localstack/init/01-sqs.sh`
+- SNS no LocalStack: topico `budget-events` criado por `localstack/init/01-sqs.sh`
 
 ```bash
 docker compose up -d
@@ -303,6 +310,7 @@ Variaveis de filas:
 - `BUDGET_CALCULATION_REQUESTS_DLQ`
 - `BUDGET_CALCULATION_RESULTS_QUEUE`
 - `BUDGET_CALCULATION_RESULTS_DLQ`
+- `BUDGET_EVENTS_TOPIC_ARN`
 
 Variaveis do `docker-compose.yml`:
 
@@ -394,6 +402,8 @@ Com o `budget-orchestrator` rodando, ele consome a mensagem de `budget-requests`
 
 Com o `budget-calculator` rodando, ele consome `budget-calculation-requests`, aplica a regra de calculo inicial e publica o resultado em `budget-calculation-results`. A regra atual aplica 10% de desconto para valores acima de `1000`.
 
+Quando o `budget-orchestrator` consome `budget-calculation-results`, ele atualiza o MongoDB e publica o evento final no topico SNS `budget-events`. O SNS entrega esse evento para a fila `notification-requests`.
+
 Para ver a mensagem na fila sem instalar o AWS CLI localmente:
 
 ```bash
@@ -424,6 +434,18 @@ Para listar as filas criadas no LocalStack:
 
 ```bash
 docker exec orcamento-localstack awslocal sqs list-queues
+```
+
+Para listar os topicos SNS:
+
+```bash
+docker exec orcamento-localstack awslocal sns list-topics
+```
+
+Para listar as assinaturas SNS:
+
+```bash
+docker exec orcamento-localstack awslocal sns list-subscriptions
 ```
 
 Para inspecionar mensagens que chegaram na DLQ:
@@ -467,6 +489,8 @@ Regras aplicadas ate agora:
 - O orquestrador so deleta a mensagem de `budget-requests` depois que o processamento local e a publicacao para `budget-calculation-requests` terminam com sucesso.
 - O calculator so deleta a mensagem de `budget-calculation-requests` depois que o calculo e a publicacao para `budget-calculation-results` terminam com sucesso.
 - O orquestrador so deleta a mensagem de `budget-calculation-results` depois que o MongoDB e atualizado com o resultado final.
+- O orquestrador publica o evento final no SNS antes de marcar `completedEventPublishedAt`.
+- Se a publicacao no SNS falhar depois do MongoDB ser atualizado, a mensagem de resultado nao e deletada; no retry, o orquestrador tenta publicar o evento novamente.
 - Se a mensagem de entrada estiver invalida, se o MongoDB falhar ou se alguma publicacao falhar, a mensagem nao e deletada; o SQS faz retry e depois move para DLQ.
 - O status `CALCULATION_REQUESTED` evita publicacao duplicada para o calculator quando uma mensagem ja processada for entregue novamente.
 
@@ -495,7 +519,6 @@ Principios para evolucao dos modulos:
 
 ## Proximas etapas planejadas
 
-- Adicionar SNS para publicar eventos finais do orcamento.
-- Conectar SNS a `notification-service` via SQS.
-- Conectar SNS a `budget-lambda` para auditoria obrigatoria do fluxo.
+- Implementar o consumer do `notification-service` para consumir eventos entregues em `notification-requests`.
+- Conectar SNS a `budget-lambda` para auditoria obrigatoria do fluxo local e preparar deploy serverless.
 - Evoluir contratos compartilhados entre modulos para evitar duplicacao de DTOs e enums.
