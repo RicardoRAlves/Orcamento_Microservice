@@ -24,7 +24,9 @@ BUDGET_EVENTS_TOPIC_ARN=$(awslocal sns create-topic \
   --query TopicArn \
   --output text)
 
-NOTIFICATION_QUEUE_URL=$(awslocal sqs create-queue --queue-name notification-requests --query QueueUrl --output text)
+create_queue_with_dlq notification-requests
+
+NOTIFICATION_QUEUE_URL=$(awslocal sqs get-queue-url --queue-name notification-requests --query QueueUrl --output text)
 NOTIFICATION_QUEUE_ARN=$(awslocal sqs get-queue-attributes \
   --queue-url "$NOTIFICATION_QUEUE_URL" \
   --attribute-names QueueArn \

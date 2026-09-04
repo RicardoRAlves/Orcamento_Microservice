@@ -13,6 +13,7 @@ Estado atual do projeto:
 - `budget-orchestrator` consome `budget-calculation-results` e atualiza o MongoDB com `CALCULATED` ou `FAILED`.
 - `budget-orchestrator` publica o evento final no topico SNS `budget-events`.
 - SNS entrega o evento na fila `notification-requests`.
+- `notification-service` consome `notification-requests` e simula o envio da notificacao via log estruturado.
 - As filas principais possuem DLQ configurada no LocalStack.
 - `notification-service` e `budget-lambda` estao preparados como proximas etapas de evolucao.
 
@@ -111,6 +112,8 @@ Responsabilidades previstas:
 
 - Consumir mensagens da fila `notification-requests`.
 - Montar mensagens de notificacao com base no status e no resultado do orcamento.
+- Simular envio de notificacao registrando o evento processado em log.
+- Deletar a mensagem somente apos o processamento da notificacao.
 - Encapsular integracoes futuras com e-mail, SMS, WhatsApp, webhooks ou outro canal.
 - Evitar que falhas de notificacao bloqueiem o calculo do orcamento.
 - Registrar tentativas, falhas e resultados de envio para observabilidade.
@@ -175,7 +178,7 @@ sequenceDiagram
     SNS->>L: Aciona auditoria serverless
     SNS->>Q2: Entrega evento para notificacao
     N->>Q2: Consome notificacao
-    N-->>C: Envia atualizacao pelo canal configurado
+    N->>N: Simula envio e registra log
 ```
 
 ## Filas e topicos locais
@@ -190,12 +193,13 @@ O ambiente local usa LocalStack para simular servicos AWS. O script `localstack/
 - `budget-calculation-results-dlq`: resultados de calculo que falharam apos as tentativas configuradas.
 - `budget-events`: topico SNS com eventos finais do orcamento.
 - `notification-requests`: solicitacoes de notificacao geradas pelo fluxo.
+- `notification-requests-dlq`: notificacoes que falharam apos as tentativas configuradas.
 
 Assinaturas SNS configuradas localmente:
 
 - `budget-events` -> SQS `notification-requests`, com `RawMessageDelivery=true`.
 
-As filas `budget-requests`, `budget-calculation-requests` e `budget-calculation-results` sao criadas com:
+As filas `budget-requests`, `budget-calculation-requests`, `budget-calculation-results` e `notification-requests` sao criadas com:
 
 - `VisibilityTimeout`: `30` segundos.
 - `maxReceiveCount`: `3`.
@@ -212,6 +216,7 @@ flowchart TB
         RSDLQ[budget-calculation-results-dlq]
         BE[SNS: budget-events]
         NR[notification-requests]
+        NRDLQ[notification-requests-dlq]
     end
 
     API[budget-api] --> BR
@@ -226,6 +231,7 @@ flowchart TB
     Orchestrator --> BE
     BE --> NR
     NR --> Notifications[notification-service]
+    NR -. falha apos retries .-> NRDLQ
 ```
 
 ## Estados do orcamento
@@ -404,6 +410,8 @@ Com o `budget-calculator` rodando, ele consome `budget-calculation-requests`, ap
 
 Quando o `budget-orchestrator` consome `budget-calculation-results`, ele atualiza o MongoDB e publica o evento final no topico SNS `budget-events`. O SNS entrega esse evento para a fila `notification-requests`.
 
+Com o `notification-service` rodando, ele consome `notification-requests`, valida o evento recebido e registra a notificacao em log. Neste momento o envio real por e-mail, SMS, WhatsApp ou webhook ainda e uma evolucao futura.
+
 Para ver a mensagem na fila sem instalar o AWS CLI localmente:
 
 ```bash
@@ -466,6 +474,12 @@ Para inspecionar a DLQ de resultados do calculator:
 docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/budget-calculation-results-dlq
 ```
 
+Para inspecionar a DLQ de notificacoes:
+
+```bash
+docker exec orcamento-localstack awslocal sqs receive-message --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/notification-requests-dlq
+```
+
 Para consultar a quantidade aproximada de mensagens na fila do calculator:
 
 ```bash
@@ -491,6 +505,7 @@ Regras aplicadas ate agora:
 - O orquestrador so deleta a mensagem de `budget-calculation-results` depois que o MongoDB e atualizado com o resultado final.
 - O orquestrador publica o evento final no SNS antes de marcar `completedEventPublishedAt`.
 - Se a publicacao no SNS falhar depois do MongoDB ser atualizado, a mensagem de resultado nao e deletada; no retry, o orquestrador tenta publicar o evento novamente.
+- O notification-service so deleta a mensagem de `notification-requests` depois de processar a notificacao com sucesso.
 - Se a mensagem de entrada estiver invalida, se o MongoDB falhar ou se alguma publicacao falhar, a mensagem nao e deletada; o SQS faz retry e depois move para DLQ.
 - O status `CALCULATION_REQUESTED` evita publicacao duplicada para o calculator quando uma mensagem ja processada for entregue novamente.
 
@@ -519,6 +534,6 @@ Principios para evolucao dos modulos:
 
 ## Proximas etapas planejadas
 
-- Implementar o consumer do `notification-service` para consumir eventos entregues em `notification-requests`.
 - Conectar SNS a `budget-lambda` para auditoria obrigatoria do fluxo local e preparar deploy serverless.
+- Implementar envio real de notificacao por e-mail, SMS, WhatsApp ou webhook.
 - Evoluir contratos compartilhados entre modulos para evitar duplicacao de DTOs e enums.

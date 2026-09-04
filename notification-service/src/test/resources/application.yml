@@ -1,0 +1,10 @@
+aws:
+  region: us-east-1
+  endpoint: http://localhost:4566
+  access-key: test
+  secret-key: test
+  sqs:
+    consumer:
+      enabled: false
+    notification-requests-queue: notification-requests
+    notification-requests-dlq: notification-requests-dlq

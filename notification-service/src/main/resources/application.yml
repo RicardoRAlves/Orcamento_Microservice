@@ -7,3 +7,17 @@ management:
     web:
       exposure:
         include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint: ${AWS_ENDPOINT:http://localhost:4566}
+  access-key: ${AWS_ACCESS_KEY_ID:test}
+  secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+  sqs:
+    consumer:
+      enabled: ${SQS_CONSUMER_ENABLED:true}
+    notification-requests-queue: ${NOTIFICATION_REQUESTS_QUEUE:notification-requests}
+    notification-requests-dlq: ${NOTIFICATION_REQUESTS_DLQ:notification-requests-dlq}
+    max-messages: ${SQS_MAX_MESSAGES:10}
+    wait-time-seconds: ${SQS_WAIT_TIME_SECONDS:5}
+    polling-delay-ms: ${SQS_POLLING_DELAY_MS:3000}
